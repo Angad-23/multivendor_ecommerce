@@ -1,7 +1,8 @@
 import { Webhook } from "svix";
 import { headers } from "next/headers";
-import { WebhookEvent } from "@clerk/nextjs/server";
-import { User } from ".prisma/client";
+import { clerkClient, WebhookEvent } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { User } from "@prisma/client";
 
 export async function POST(req: Request) {
   const SIGNING_SECRET = process.env.SIGNING_SECRET;
@@ -52,9 +53,13 @@ export async function POST(req: Request) {
   // For this guide, log payload to console
   const { id } = evt.data;
   const eventType = evt.type;
+
+  // When a user is created or updated
+
   if (evt.type === "user.created" || evt.type === "user.updated") {
+    console.log("userId:", evt.data.id);
     const data = JSON.parse(body).data;
-    const user = {
+    const user: Partial<User> = {
       id: data.id,
       name: `${data.first_name} ${data.last_name}`,
       email: data.email_addresses[0].email_address,
@@ -62,16 +67,36 @@ export async function POST(req: Request) {
     };
     if (!user) return;
 
-    // const dbuser = await db.user.upsert({
-    //   where: {
-    //     email: user.email,
-    //   },
-    //   update: user,
-    //   create: {
-    //     ...user,
-    //   },
-    // })
+    const dbUser = await db.user.upsert({
+      where: {
+        email: user.email,
+      },
+      update: user,
+      create: {
+        id: user.id!,
+        name: user.name!,
+        email: user.email!,
+        picture: user.picture!,
+        role: user.role || "USER",
+      },
+    });
 
-    return new Response("Webhook received", { status: 200 });
+    const client = await clerkClient();
+    await client.users.updateUserMetadata(data.id, {
+      privateMetadata: {
+        role: dbUser.role || "USER",
+      },
+    });
   }
+
+  //   When a user is deleted
+  if (evt.type === "user.deleted") {
+    const userId = JSON.parse(body).data.id;
+    await db.user.delete({
+      where: {
+        id: userId,
+      },
+    });
+  }
+  return new Response("Webhook received", { status: 200 });
 }

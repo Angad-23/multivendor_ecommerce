@@ -8,18 +8,18 @@ datasource db {
   relationMode = "prisma"
 }
 
-enum user_role {
+enum Role {
   USER
   ADMIN
   SELLER
 }
 
-model user {
+model User {
   id        String    @id @default(uuid())
   name      String
   email     String    @unique
   picture   String    @db.Text
-  role      user_role @default(USER)
+  role      Role      @default(USER)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
